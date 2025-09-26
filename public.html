@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Plugin System Demo</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        max-width: 420px;
+        margin: 40px auto;
+      }
+      input,
+      button {
+        margin-top: 10px;
+        width: 100%;
+        padding: 8px;
+      }
+      #error {
+        color: red;
+        margin-top: 8px;
+      }
+      #success {
+        color: green;
+        margin-top: 8px;
+      }
+      #plugin-root {
+        margin-top: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>Đăng ký tài khoản</h2>
+
+    <input id="password" type="password" placeholder="Nhập mật khẩu" />
+    <div id="plugin-root"></div>
+
+    <button id="registerBtn">Đăng ký</button>
+    <div id="error"></div>
+    <div id="success"></div>
+
+    <hr />
+    <button id="loadDynamicValidatorBtn">Tải quy tắc kiểm tra mới</button>
+    <button id="loadPluginsBtn">Nạp plugin từ server</button>
+
+    <script type="module">
+      const routes = new Map();
+
+      const Host = {
+        ui: {
+          mount(node) {
+            const root = document.getElementById("plugin-root");
+            root.appendChild(node);
+          },
+        },
+        dom: {
+          query(sel) {
+            return document.querySelector(sel);
+          },
+        },
+        register(name, fn) {
+          routes.set(name, fn);
+        },
+        call(name, payload) {
+          return routes.get(name)?.(payload);
+        },
+      };
+
+      const errorEl = document.getElementById("error");
+      const successEl = document.getElementById("success");
+
+      function validatePasswordLocal(pw) {
+        return typeof pw === "string" && pw.length >= 8;
+      }
+
+      document.getElementById("registerBtn").addEventListener("click", () => {
+        const pw = document.getElementById("password").value;
+        errorEl.textContent = "";
+        successEl.textContent = "";
+
+        const validator = window.passwordValidator || validatePasswordLocal;
+        const ok = validator(pw);
+
+        if (!ok) 
+          alert("Mật khẩu không hợp lệ theo quy tắc hiện tại")
+        else {
+          alert("Đăng ký thành công!")
+        }
+      });
+
+      document
+        .getElementById("loadDynamicValidatorBtn")
+        .addEventListener("click", () => {
+          const s = document.createElement("script");
+          s.src = "/dynamic-validator.js";
+          document.body.appendChild(s);
+          console.log(
+            "Đang tải quy tắc kiểm tra mới (>=12 & có ký tự đặc biệt)..."
+          );
+        });
+
+      document.getElementById("registerBtn").addEventListener("click", () => {
+        const pw = document.getElementById("password").value;
+        errorEl.textContent = "";
+        successEl.textContent = "";
+
+        const ok = validatePasswordLocal(pw);
+      });
+
+      async function loadPlugins() {
+        const registry = await fetch("/plugins/registry.json").then((r) =>
+          r.json()
+        );
+        for (const p of registry.plugins.filter((x) => x.enabled)) {
+          try {
+            const mod = await import(p.url);
+            if (typeof mod.setup === "function") {
+              await mod.setup({ ui: Host.ui, dom: Host.dom });
+              console.log("Loaded plugin:", mod.meta?.name ?? p.id);
+            }
+          } catch (e) {
+            console.error("Plugin load failed:", p.id, e);
+          }
+        }
+      }
+
+      document
+        .getElementById("loadPluginsBtn")
+        .addEventListener("click", loadPlugins);
+
+    </script>
+  </body>
+</html>
